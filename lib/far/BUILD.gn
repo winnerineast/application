@@ -11,6 +11,8 @@ source_set("far") {
     "archive_reader.h",
     "archive_writer.cc",
     "archive_writer.h",
+    "file.cc",
+    "file.h",
     "file_operations.cc",
     "file_operations.h",
     "format.h",

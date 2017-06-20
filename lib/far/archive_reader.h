@@ -9,13 +9,16 @@
 
 #include "application/lib/far/format.h"
 #include "lib/ftl/files/unique_fd.h"
+#include "application/lib/far/file.h"
 #include "lib/ftl/strings/string_view.h"
 
 namespace archive {
 
+template<typename T>
 class ArchiveReader {
  public:
-  explicit ArchiveReader(ftl::UniqueFD fd);
+  // explicit ArchiveReader(ftl::UniqueFD fd);
+  explicit ArchiveReader(File<T> f);
   ~ArchiveReader();
   ArchiveReader(const ArchiveReader& other) = delete;
 
@@ -40,7 +43,7 @@ class ArchiveReader {
   bool GetDirectoryEntry(ftl::StringView archive_path,
                          DirectoryTableEntry* entry) const;
 
-  ftl::UniqueFD TakeFileDescriptor();
+  T TakeFileDescriptor();
 
   ftl::StringView GetPathView(const DirectoryTableEntry& entry) const;
 
@@ -50,7 +53,7 @@ class ArchiveReader {
 
   const IndexEntry* GetIndexEntry(uint64_t type) const;
 
-  ftl::UniqueFD fd_;
+  File<T> f_;
   std::vector<IndexEntry> index_;
   std::vector<DirectoryTableEntry> directory_table_;
   std::vector<char> path_data_;

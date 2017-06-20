@@ -12,12 +12,15 @@
 
 #include "application/lib/far/file_operations.h"
 #include "application/lib/far/format.h"
+#include "lib/ftl/files/unique_fd.h"
 
 namespace archive {
+
 namespace {
 
+template<typename T>
 struct PathComparator {
-  const ArchiveReader* reader = nullptr;
+  const ArchiveReader<T>* reader = nullptr;
 
   bool operator()(const DirectoryTableEntry& lhs, const ftl::StringView& rhs) {
     return reader->GetPathView(lhs) < rhs;
@@ -26,48 +29,58 @@ struct PathComparator {
 
 }  // namespace
 
-ArchiveReader::ArchiveReader(ftl::UniqueFD fd) : fd_(std::move(fd)) {}
+template<typename T>
+ArchiveReader<T>::ArchiveReader(File<T> f) : f_(std::move(f)) {}
 
-ArchiveReader::~ArchiveReader() = default;
+template<typename T>
+ArchiveReader<T>::~ArchiveReader() = default;
 
-bool ArchiveReader::Read() {
+template<typename T>
+bool ArchiveReader<T>::Read() {
   return ReadIndex() && ReadDirectory();
 }
 
-bool ArchiveReader::ExtractFile(ftl::StringView archive_path,
+template<typename T>
+bool ArchiveReader<T>::ExtractFile(ftl::StringView archive_path,
                                 const char* output_path) const {
   DirectoryTableEntry entry;
   if (!GetDirectoryEntry(archive_path, &entry))
     return false;
-  if (lseek(fd_.get(), entry.data_offset, SEEK_SET) < 0) {
+  if (lseek(&f_, entry.data_offset, SEEK_SET) < 0) {
     fprintf(stderr, "error: Failed to seek to offset of file.\n");
     return false;
   }
-  if (!CopyFileToPath(fd_.get(), output_path, entry.data_length)) {
+  if (!CopyFileToPath(&f_, output_path, entry.data_length)) {
     fprintf(stderr, "error: Failed write contents to '%s'.\n", output_path);
     return false;
   }
   return true;
 }
 
-bool ArchiveReader::CopyFile(ftl::StringView archive_path, int dst_fd) const {
+template<typename T>
+bool ArchiveReader<T>::CopyFile(ftl::StringView archive_path, int dst_fd) const {
   DirectoryTableEntry entry;
   if (!GetDirectoryEntry(archive_path, &entry))
     return false;
-  if (lseek(fd_.get(), entry.data_offset, SEEK_SET) < 0) {
+  if (lseek(&f_, entry.data_offset, SEEK_SET) < 0) {
     fprintf(stderr, "error: Failed to seek to offset of file.\n");
     return false;
   }
-  if (!CopyFileToFile(fd_.get(), dst_fd, entry.data_length)) {
+
+  ftl::UniqueFD fd(dst_fd);
+  if (!CopyFileToFile(&f_, &fd, entry.data_length)) {
     fprintf(stderr, "error: Failed write contents.\n");
     return false;
   }
   return true;
 }
 
-bool ArchiveReader::GetDirectoryEntry(ftl::StringView archive_path,
-                                      DirectoryTableEntry* entry) const {
-  PathComparator comparator;
+
+template<typename T>
+bool ArchiveReader<T>::GetDirectoryEntry(ftl::StringView archive_path,
+
+                                         DirectoryTableEntry* entry) const {
+  PathComparator<T> comparator;
   comparator.reader = this;
 
   auto it = std::lower_bound(directory_table_.begin(), directory_table_.end(),
@@ -78,24 +91,28 @@ bool ArchiveReader::GetDirectoryEntry(ftl::StringView archive_path,
   return true;
 }
 
-ftl::UniqueFD ArchiveReader::TakeFileDescriptor() {
-  return std::move(fd_);
+template<typename T>
+T ArchiveReader<T>::TakeFileDescriptor() {
+  return std::move(f_);
 }
 
-ftl::StringView ArchiveReader::GetPathView(
+
+template<typename T>
+ftl::StringView ArchiveReader<T>::GetPathView(
     const DirectoryTableEntry& entry) const {
   return ftl::StringView(path_data_.data() + entry.name_offset,
                          entry.name_length);
 }
 
-bool ArchiveReader::ReadIndex() {
-  if (lseek(fd_.get(), 0, SEEK_SET) < 0) {
+template<typename T>
+bool ArchiveReader<T>::ReadIndex() {
+  if (lseek(&f_, 0, SEEK_SET) < 0) {
     fprintf(stderr, "error: Failed to seek to beginning of archive.\n");
     return false;
   }
 
   IndexChunk index_chunk;
-  if (!ReadObject(fd_.get(), &index_chunk)) {
+  if (!ReadObject(&f_, &index_chunk)) {
     fprintf(stderr,
             "error: Failed read index chunk. Is this file an archive?\n");
     return false;
@@ -115,7 +132,7 @@ bool ArchiveReader::ReadIndex() {
   }
 
   index_.resize(index_chunk.length / sizeof(IndexEntry));
-  if (!ReadVector(fd_.get(), &index_)) {
+  if (!ReadVector(&f_, &index_)) {
     fprintf(stderr, "error: Failed to read contents of index chunk.\n");
     return false;
   }
@@ -148,7 +165,8 @@ bool ArchiveReader::ReadIndex() {
   return true;
 }
 
-bool ArchiveReader::ReadDirectory() {
+template<typename T>
+bool ArchiveReader<T>::ReadDirectory() {
   const IndexEntry* dir_entry = GetIndexEntry(kDirType);
   if (!dir_entry) {
     fprintf(stderr, "error: Cannot find directory chunk.\n");
@@ -162,11 +180,11 @@ bool ArchiveReader::ReadDirectory() {
   uint64_t file_count = dir_entry->length / sizeof(DirectoryTableEntry);
   directory_table_.resize(file_count);
 
-  if (lseek(fd_.get(), dir_entry->offset, SEEK_SET) < 0) {
+  if (lseek(&f_, dir_entry->offset, SEEK_SET) < 0) {
     fprintf(stderr, "error: Failed to seek to directory chunk.\n");
     return false;
   }
-  if (!ReadVector(fd_.get(), &directory_table_)) {
+  if (!ReadVector(&f_, &directory_table_)) {
     fprintf(stderr, "error: Failed to read directory table.\n");
     return false;
   }
@@ -178,11 +196,11 @@ bool ArchiveReader::ReadDirectory() {
   }
   path_data_.resize(dirnames_entry->length);
 
-  if (lseek(fd_.get(), dirnames_entry->offset, SEEK_SET) < 0) {
+  if (lseek(&f_, dirnames_entry->offset, SEEK_SET) < 0) {
     fprintf(stderr, "error: Failed to seek to directory names chunk.\n");
     return false;
   }
-  if (!ReadVector(fd_.get(), &path_data_)) {
+  if (!ReadVector(&f_, &path_data_)) {
     fprintf(stderr, "error: Failed to read directory names.\n");
     return false;
   }
@@ -190,8 +208,10 @@ bool ArchiveReader::ReadDirectory() {
   return true;
 }
 
-const IndexEntry* ArchiveReader::GetIndexEntry(uint64_t type) const {
+template<typename T>
+const IndexEntry* ArchiveReader<T>::GetIndexEntry(uint64_t type) const {
   for (auto& entry : index_) {
+    printf("the type of the entry is: %zu, but the requested one is: %zu]\n", entry.type, type);
     if (entry.type == type)
       return &entry;
   }

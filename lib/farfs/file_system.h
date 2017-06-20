@@ -12,6 +12,8 @@
 #include <memory>
 
 #include "application/lib/far/archive_reader.h"
+#include "application/lib/far/archive_reader.cc"
+#include "application/lib/far/file.h"
 #include "lib/ftl/files/unique_fd.h"
 #include "lib/mtl/vfs/vfs_dispatcher.h"
 
@@ -48,7 +50,7 @@ class FileSystem {
   /// descriptor.
   mx_handle_t vmo_;
   mtl::VFSDispatcher dispatcher_;
-  std::unique_ptr<ArchiveReader> reader_;
+  std::unique_ptr<ArchiveReader<ftl::UniqueFD>> reader_;
   mxtl::RefPtr<vmofs::VnodeDir> directory_;
 };
 

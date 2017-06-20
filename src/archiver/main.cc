@@ -10,6 +10,7 @@
 #include <unistd.h>
 
 #include "application/lib/far/archive_reader.h"
+#include "application/lib/far/archive_reader.cc"
 #include "application/lib/far/archive_writer.h"
 #include "application/lib/far/manifest.h"
 #include "lib/ftl/command_line.h"
@@ -82,7 +83,9 @@ int List(const ftl::CommandLine& command_line) {
   ftl::UniqueFD fd(open(archive_path.c_str(), O_RDONLY));
   if (!fd.is_valid())
     return -1;
-  archive::ArchiveReader reader(std::move(fd));
+
+  File<ftl::UniqueFD> f(std::move(fd));
+  archive::ArchiveReader< ftl::UniqueFD> reader(std::move(f));
   if (!reader.Read())
     return -1;
   reader.ListPaths([](ftl::StringView string) {
@@ -107,7 +110,9 @@ int ExtractFile(const ftl::CommandLine& command_line) {
   ftl::UniqueFD fd(open(archive_path.c_str(), O_RDONLY));
   if (!fd.is_valid())
     return -1;
-  archive::ArchiveReader reader(std::move(fd));
+
+  File<ftl::UniqueFD> f(std::move(fd));
+  archive::ArchiveReader<ftl::UniqueFD> reader(std::move(f));
   if (!reader.Read())
     return -1;
   if (!reader.ExtractFile(file_path, output_path.c_str()))
@@ -127,7 +132,8 @@ int Cat(const ftl::CommandLine& command_line) {
   ftl::UniqueFD fd(open(archive_path.c_str(), O_RDONLY));
   if (!fd.is_valid())
     return -1;
-  archive::ArchiveReader reader(std::move(fd));
+  File<ftl::UniqueFD> f(std::move(fd));
+  archive::ArchiveReader<ftl::UniqueFD> reader(std::move(f));
   if (!reader.Read())
     return -1;
   if (!reader.CopyFile(file_path, STDOUT_FILENO))

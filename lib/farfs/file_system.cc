@@ -97,7 +97,8 @@ FileSystem::FileSystem(mx::vmo vmo) : vmo_(vmo.get()) {
   ftl::UniqueFD fd(mxio_vmo_fd(vmo.release(), 0, num_bytes));
   if (!fd.is_valid())
     return;
-  reader_ = std::make_unique<ArchiveReader>(std::move(fd));
+  File<ftl::UniqueFD> f(std::move(fd));
+  reader_ = std::make_unique<ArchiveReader<ftl::UniqueFD>>(std::move(f));
   CreateDirectory();
 }
 
