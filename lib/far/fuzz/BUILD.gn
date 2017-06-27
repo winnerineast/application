@@ -1,0 +1,20 @@
+# Copyright 2017 The Fuchsia Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+executable("far-fuzzer") {
+  sources = [
+    "fuzzer.cc",
+  ]
+  deps = [
+    "//application/lib/far:far",
+    "//third_party/llvm/lib/Fuzzer",
+  ]
+
+  cflags = [
+    "-fsanitize=address",
+    "-fsanitize-coverage=trace-pc-guard",
+  ]
+
+  ldflags = cflags
+}
